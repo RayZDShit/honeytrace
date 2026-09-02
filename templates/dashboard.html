@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>HoneyTrace | Deception Intelligence</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="shell">
+    <aside class="sidebar">
+        <div class="brand">
+            <span class="brand-mark" aria-hidden="true">
+                <svg viewBox="0 0 48 48">
+                    <path class="logo-cell" d="M24 3 40 12v19L24 40 8 31V12L24 3Z"/>
+                    <circle class="logo-radar" cx="24" cy="22" r="8"/>
+                    <path class="logo-scan" d="M24 22 34 13M24 7v4M12 32l3-3M33 32l3 3"/>
+                    <circle class="logo-dot" cx="30" cy="16" r="2.5"/>
+                </svg>
+            </span>
+            <div><strong>HoneyTrace</strong><small>Deception Intelligence</small></div>
+        </div>
+        <nav aria-label="Dashboard sections">
+            <button class="nav-item" data-view="overview">Overview</button>
+            <button class="nav-item live-nav active" data-view="live"><span class="nav-pulse" aria-hidden="true"></span>Live monitor</button>
+            <button class="nav-item" data-view="sessions">Sessions</button>
+            <button class="nav-item" data-view="model">Model evaluation</button>
+            <button class="nav-item" data-view="sources">Sensors</button>
+            <button class="nav-item" data-view="imports">Imports</button>
+        </nav>
+        <div class="sidebar-note">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span>Read-only analyst view</span>
+        </div>
+    </aside>
+
+    <main>
+        <header class="topbar">
+            <div><p class="eyebrow">HONEYPOT BEHAVIOR INTELLIGENCE</p><h1 id="page-title">Live monitor</h1></div>
+            <div class="update-status" id="update-status" aria-live="polite">Loading…</div>
+        </header>
+
+        <section class="view" id="view-overview">
+            <div class="stat-grid" id="overview-stats"></div>
+            <div class="two-column">
+                <article class="panel">
+                    <div class="panel-heading"><div><p class="eyebrow">CLASSIFICATION</p><h2>Behavior categories</h2></div></div>
+                    <div class="bar-chart" id="label-chart" aria-label="Behavior category distribution"></div>
+                </article>
+                <article class="panel">
+                    <div class="panel-heading"><div><p class="eyebrow">SEVERITY</p><h2>Threat levels</h2></div></div>
+                    <div class="bar-chart" id="threat-chart" aria-label="Threat-level distribution"></div>
+                </article>
+            </div>
+            <article class="panel">
+                <div class="panel-heading"><div><p class="eyebrow">LATEST TELEMETRY</p><h2>Recent events</h2></div><span class="quiet">Refreshes every 15 seconds</span></div>
+                <div class="table-wrap"><table><thead><tr><th>Time</th><th>Sensor</th><th>Source</th><th>Event</th><th>Summary</th></tr></thead><tbody id="recent-events"></tbody></table></div>
+            </article>
+        </section>
+
+        <section class="view active" id="view-live">
+            <article class="live-command panel">
+                <div class="live-heading">
+                    <div class="live-state">
+                        <span class="live-beacon" id="live-beacon" aria-hidden="true"></span>
+                        <div><p class="eyebrow">CONTINUOUS MONITORING</p><h2 id="live-connection">Connecting to telemetry…</h2></div>
+                    </div>
+                    <div class="live-actions">
+                        <span class="quiet" id="live-updated">Waiting for first update</span>
+                        <button id="toggle-live" class="stream-toggle" type="button">Pause stream</button>
+                    </div>
+                </div>
+                <div class="monitor-pipeline" aria-label="Detection pipeline">
+                    <div><span>1</span><strong>Connection</strong><small>Sensor accepts telemetry</small></div>
+                    <i aria-hidden="true">→</i>
+                    <div><span>2</span><strong>Capture</strong><small>Events stored safely</small></div>
+                    <i aria-hidden="true">→</i>
+                    <div><span>3</span><strong>Analyze</strong><small>Behavior grouped</small></div>
+                    <i aria-hidden="true">→</i>
+                    <div><span>4</span><strong>Classify</strong><small>Rules and model score</small></div>
+                </div>
+            </article>
+
+            <div class="stat-grid live-stat-grid" id="live-stats"></div>
+
+            <div class="live-grid">
+                <article class="panel live-panel">
+                    <div class="panel-heading">
+                        <div><p class="eyebrow">RAW TELEMETRY</p><h2>Live event stream</h2></div>
+                        <span class="quiet">Newest first · updates every 2 seconds</span>
+                    </div>
+                    <div class="live-feed" id="live-events"><div class="live-empty">Waiting for events…</div></div>
+                </article>
+                <article class="panel live-panel">
+                    <div class="panel-heading">
+                        <div><p class="eyebrow">ANALYSIS OUTPUT</p><h2>Live detections</h2></div>
+                        <span class="quiet">Classified after a connection closes</span>
+                    </div>
+                    <div class="detection-feed" id="live-detections"><div class="live-empty">Waiting for classifications…</div></div>
+                </article>
+            </div>
+        </section>
+
+        <section class="view" id="view-sessions">
+            <article class="panel filter-panel">
+                <div class="filters">
+                    <label>Category
+                        <select id="filter-label">
+                            <option value="">All categories</option>
+                        </select>
+                    </label>
+                    <label>Threat
+                        <select id="filter-threat">
+                            <option value="">All threat levels</option>
+                            <option value="critical">Critical</option>
+                            <option value="high">High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
+                        </select>
+                    </label>
+                    <label>Sensor
+                        <select id="filter-source">
+                            <option value="">All sensors</option>
+                        </select>
+                    </label>
+                    <label>Source IP<input id="filter-search" placeholder="exact or partial"></label>
+                    <button class="primary" id="apply-filters">Apply filters</button>
+                </div>
+            </article>
+            <article class="panel">
+                <div class="panel-heading"><div><p class="eyebrow">BEHAVIORAL BURSTS</p><h2>Classified sessions</h2></div><span id="session-total" class="quiet"></span></div>
+                <div class="table-wrap"><table><thead><tr><th>First seen</th><th>Sensor</th><th>Source</th><th>Events</th><th>Failures</th><th>Commands</th><th>Rule</th><th>Model</th><th>Final</th><th>Threat</th><th></th></tr></thead><tbody id="session-rows"></tbody></table></div>
+                <div class="pagination"><button id="previous-page">Previous</button><span id="page-info">Page 1</span><button id="next-page">Next</button></div>
+            </article>
+        </section>
+
+        <section class="view" id="view-model">
+            <div id="model-empty" class="empty-state">No trained model is available yet. Run the training step after importing and building sessions.</div>
+            <div id="model-content" hidden>
+                <div class="stat-grid" id="model-stats"></div>
+                <article class="panel notice"><strong>Evaluation meaning</strong><p id="model-disclaimer"></p></article>
+                <div class="two-column model-layout">
+                    <article class="panel"><div class="panel-heading"><div><p class="eyebrow">EXPLAINABILITY</p><h2>Feature importance</h2></div></div><div class="bar-chart" id="feature-chart"></div></article>
+                    <article class="panel"><div class="panel-heading"><div><p class="eyebrow">HELD-OUT RESULTS</p><h2>Confusion matrix</h2></div></div><div class="table-wrap" id="confusion-matrix"></div></article>
+                </div>
+                <article class="panel"><div class="panel-heading"><div><p class="eyebrow">PER CATEGORY</p><h2>Precision, recall, and F1</h2></div></div><div class="table-wrap"><table><thead><tr><th>Category</th><th>Precision</th><th>Recall</th><th>F1</th><th>Support</th></tr></thead><tbody id="classification-report"></tbody></table></div></article>
+            </div>
+        </section>
+
+        <section class="view" id="view-sources">
+            <article class="panel"><div class="panel-heading"><div><p class="eyebrow">COMPARATIVE TELEMETRY</p><h2>Sensor summary</h2></div></div><div class="table-wrap"><table><thead><tr><th>Sensor</th><th>Type</th><th>Sessions</th><th>Events</th><th>Failed</th><th>Successful</th><th>Commands</th><th>Downloads</th><th>High risk</th></tr></thead><tbody id="source-rows"></tbody></table></div></article>
+        </section>
+
+        <section class="view" id="view-imports">
+            <article class="panel"><div class="panel-heading"><div><p class="eyebrow">DATA PROVENANCE</p><h2>Import history</h2></div></div><div class="table-wrap"><table><thead><tr><th>Imported</th><th>Sensor</th><th>File</th><th>Lines</th><th>Inserted</th><th>Duplicates</th><th>Invalid</th><th>Status</th></tr></thead><tbody id="import-rows"></tbody></table></div></article>
+        </section>
+    </main>
+</div>
+
+<dialog id="session-dialog">
+    <div class="dialog-heading"><div><p class="eyebrow">SESSION INVESTIGATION</p><h2 id="dialog-title">Session details</h2></div><button id="close-dialog" aria-label="Close session details">Close</button></div>
+    <div id="session-detail"></div>
+</dialog>
+
+<script src="{{ url_for('static', filename='dashboard.js') }}" defer></script>
+</body>
+</html>
