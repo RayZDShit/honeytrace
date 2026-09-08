@@ -111,6 +111,46 @@ CREATE INDEX IF NOT EXISTS idx_sessions_first_seen ON sessions(first_seen);
 CREATE INDEX IF NOT EXISTS idx_sessions_final_label ON sessions(final_label);
 CREATE INDEX IF NOT EXISTS idx_sessions_threat ON sessions(threat_level);
 CREATE INDEX IF NOT EXISTS idx_sessions_source ON sessions(source_name);
+CREATE INDEX IF NOT EXISTS idx_sessions_last_seen ON sessions(last_seen);
+
+CREATE TABLE IF NOT EXISTS session_changes (
+    revision INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS session_insert_change AFTER INSERT ON sessions
+BEGIN INSERT INTO session_changes(session_id) VALUES(NEW.id); END;
+CREATE TRIGGER IF NOT EXISTS session_update_change AFTER UPDATE ON sessions
+BEGIN INSERT INTO session_changes(session_id) VALUES(NEW.id); END;
+
+CREATE TABLE IF NOT EXISTS sensors (
+    name TEXT PRIMARY KEY, heartbeat TEXT NOT NULL, status TEXT NOT NULL,
+    bind_address TEXT NOT NULL, port INTEGER NOT NULL,
+    active_connections INTEGER NOT NULL DEFAULT 0,
+    backlog INTEGER NOT NULL DEFAULT 0, dropped_events INTEGER NOT NULL DEFAULT 0,
+    processing_ms REAL NOT NULL DEFAULT 0, error TEXT
+);
+CREATE TABLE IF NOT EXISTS active_connections (
+    native_id TEXT PRIMARY KEY, sensor TEXT NOT NULL, src_ip TEXT NOT NULL,
+    opened_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS analysts (
+    username TEXT PRIMARY KEY, password_hash TEXT NOT NULL,
+    auth_version TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS incidents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_key TEXT NOT NULL UNIQUE, session_id INTEGER NOT NULL,
+    sensor TEXT NOT NULL, src_ip TEXT NOT NULL, category TEXT NOT NULL,
+    severity TEXT NOT NULL, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
+    event_count INTEGER NOT NULL, reason TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'New', updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS incident_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, incident_id INTEGER NOT NULL,
+    author TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL,
+    FOREIGN KEY(incident_id) REFERENCES incidents(id)
+);
+CREATE INDEX IF NOT EXISTS idx_incidents_updated ON incidents(updated_at);
 """
 
 
@@ -118,13 +158,22 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+class ManagedConnection(sqlite3.Connection):
+    """Commit/rollback and close on context exit (SQLite alone does not close)."""
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 def connect(*, readonly: bool = False) -> sqlite3.Connection:
     ensure_directories()
     if readonly:
         uri = f"file:{DB_PATH.as_posix()}?mode=ro"
-        conn = sqlite3.connect(uri, uri=True, timeout=30)
+        conn = sqlite3.connect(uri, uri=True, timeout=30, factory=ManagedConnection)
     else:
-        conn = sqlite3.connect(DB_PATH, timeout=60)
+        conn = sqlite3.connect(DB_PATH, timeout=60, factory=ManagedConnection)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=30000")

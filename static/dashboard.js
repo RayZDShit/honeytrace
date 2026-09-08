@@ -12,7 +12,8 @@ const displayName = value => String(value || "unknown").replaceAll("_", " ").rep
 const when = value => value ? new Date(value).toLocaleString() : "—";
 
 async function api(path) {
-    const response = await fetch(path, { headers: { Accept: "application/json" } });
+    const response = await fetch(path, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15000) });
+    if (response.status === 401) { window.location.assign("/login"); throw new Error("Sign in required"); }
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
     return response.json();
 }
@@ -144,57 +145,82 @@ function liveDetectionNode(detection, fresh) {
 }
 
 async function loadLive(reset = false) {
-    if (state.liveLoading || state.livePaused) return;
-    state.liveLoading = true;
-    const wasInitialized = state.liveInitialized;
+    if (state.livePaused) return;
     if (reset) {
-        state.liveEventCursor = 0;
-        state.liveSessionCursor = 0;
-        state.liveInitialized = false;
-        clear(byId("live-events"));
-        clear(byId("live-detections"));
+        state.liveResetPending = true;
+        state.liveGeneration = (state.liveGeneration || 0) + 1;
     }
+    if (state.liveLoading) return;
+    state.liveLoading = true;
+    const generation = state.liveGeneration || 0;
+    const initial = !state.liveInitialized || state.liveResetPending;
+    state.liveResetPending = false;
     try {
-        const data = await api(`/api/live?after_event_id=${state.liveEventCursor}&after_session_id=${state.liveSessionCursor}&limit=40`);
+        const params = new URLSearchParams({
+            after_event_id: state.liveEventCursor, after_revision: state.liveRevision || 0,
+            initial: String(initial), limit: 100,
+            since: new Date(Date.now() - Number(state.liveFilters?.minutes || 5) * 60000).toISOString(),
+            source: state.liveFilters?.source || "", threat: state.liveFilters?.threat || "",
+        });
+        const data = await api("/api/live?" + params);
+        if (state.livePaused || generation !== (state.liveGeneration || 0)) return;
+        if (initial || data.reset) {
+            clear(byId("live-events")); clear(byId("live-detections"));
+        }
         renderStats("live-stats", [
-            { label: "Events · 5 min", value: fmt(data.stats.events_5m), context: "Captured telemetry" },
-            { label: "Detections · 5 min", value: fmt(data.stats.detections_5m), context: "Analyzed sessions" },
-            { label: "High risk · 5 min", value: fmt(data.stats.high_risk_5m), context: "High and critical" },
-            { label: "Active sources · 5 min", value: fmt(data.stats.sources_5m), context: "Distinct addresses" },
+            { label: "Events / 5 min", value: fmt(data.stats.events_5m) },
+            { label: "Sessions / 5 min", value: fmt(data.stats.detections_5m) },
+            { label: "High risk / 5 min", value: fmt(data.stats.high_risk_5m) },
+            { label: "Sources / 5 min", value: fmt(data.stats.sources_5m) },
         ]);
-
-        const eventFeed = byId("live-events");
+        const eventFeed = byId("live-events"), detectionFeed = byId("live-detections");
         if (data.events.length) eventFeed.querySelector(".live-empty")?.remove();
         data.events.forEach(event => {
-            if (!eventFeed.querySelector(`[data-event-id="${event.id}"]`)) {
-                eventFeed.prepend(liveEventNode(event, wasInitialized));
+            if (!eventFeed.querySelector('[data-event-id="' + event.id + '"]')) {
+                const node = liveEventNode(event, !initial);
+                node.dataset.timestamp = event.timestamp;
+                eventFeed.prepend(node);
             }
         });
-        const detectionFeed = byId("live-detections");
         if (data.detections.length) detectionFeed.querySelector(".live-empty")?.remove();
         data.detections.forEach(detection => {
-            if (!detectionFeed.querySelector(`[data-session-id="${detection.id}"]`)) {
-                detectionFeed.prepend(liveDetectionNode(detection, wasInitialized));
+            detectionFeed.querySelector('[data-session-id="' + detection.id + '"]')?.remove();
+            if (!detection.hidden) {
+                const node = liveDetectionNode(detection, !initial);
+                node.dataset.timestamp = detection.last_seen;
+                detectionFeed.prepend(node);
             }
         });
-        if (!eventFeed.children.length) eventFeed.innerHTML = '<div class="live-empty">Waiting for events…</div>';
-        if (!detectionFeed.children.length) detectionFeed.innerHTML = '<div class="live-empty">Waiting for classifications…</div>';
-        trimFeed(eventFeed, 60);
-        trimFeed(detectionFeed, 40);
-
-        state.liveEventCursor = Math.max(state.liveEventCursor, Number(data.event_cursor || 0));
-        state.liveSessionCursor = Math.max(state.liveSessionCursor, Number(data.session_cursor || 0));
+        const cutoff = Date.now() - Number(state.liveFilters?.minutes || 5) * 60000;
+        [eventFeed, detectionFeed].forEach(feed => {
+            feed.querySelectorAll("[data-timestamp]").forEach(node => {
+                if (new Date(node.dataset.timestamp).getTime() < cutoff) node.remove();
+            });
+            if (!feed.children.length) {
+                const empty = document.createElement("div");
+                empty.className = "live-empty"; empty.textContent = "No activity in the selected window";
+                feed.append(empty);
+            }
+        });
+        trimFeed(eventFeed, 100); trimFeed(detectionFeed, 60);
+        state.liveEventCursor = data.event_cursor; state.liveRevision = data.revision;
         state.liveInitialized = true;
-        const recentSensorActivity = data.last_sensor_event && Date.now() - new Date(data.last_sensor_event).getTime() < 60000;
-        setLiveConnection(recentSensorActivity ? "Receiving sensor activity" : "Stream connected · waiting for activity");
-        byId("live-updated").textContent = `Last sync ${new Date(data.generated_at).toLocaleTimeString()} · 2-second polling`;
-        setStatus("Live telemetry synchronized");
+        const online = data.sensors.filter(sensor => sensor.online);
+        setLiveConnection(online.length ? "Sensor online - monitoring" : "Sensor offline - dashboard connected",
+                          online.length ? "live" : "error");
+        byId("live-updated").textContent = "Last sync " + new Date(data.generated_at).toLocaleTimeString()
+            + (data.has_more ? " - catching up" : " - up to date");
+        if (typeof renderOperations === "function") renderOperations(data);
+        if (state.view === "live") setStatus("Live telemetry synchronized");
+        if (data.has_more) setTimeout(() => { if (state.view === "live") loadLive(); }, 100);
     } catch (error) {
+        if (initial) state.liveInitialized = false;
         setLiveConnection("Telemetry connection unavailable", "error");
         byId("live-updated").textContent = "Automatic retry enabled";
-        setStatus(`Live monitor error: ${error.message}`, true);
+        if (state.view === "live") setStatus("Live monitor error: " + error.message, true);
     } finally {
         state.liveLoading = false;
+        if (state.liveResetPending && !state.livePaused) loadLive();
     }
 }
 
@@ -339,7 +365,7 @@ async function loadImports() {
     } catch (error) { setStatus(`Import error: ${error.message}`, true); }
 }
 
-const loaders = { overview: loadOverview, live: () => loadLive(!state.liveInitialized), sessions: loadSessions, model: loadModel, sources: loadSources, imports: loadImports };
+const loaders = { overview: loadOverview, live: () => loadLive(!state.liveInitialized), sessions: loadSessions, incidents: () => loadIncidents(), model: loadModel, sources: loadSources, imports: loadImports };
 document.querySelectorAll(".nav-item").forEach(button => button.addEventListener("click", () => {
     state.view = button.dataset.view;
     document.querySelectorAll(".nav-item").forEach(item => item.classList.toggle("active", item === button));
@@ -350,6 +376,7 @@ document.querySelectorAll(".nav-item").forEach(button => button.addEventListener
 byId("apply-filters").addEventListener("click", () => { state.sessionPage = 1; loadSessions(); });
 byId("toggle-live").addEventListener("click", () => {
     state.livePaused = !state.livePaused;
+    state.liveGeneration = (state.liveGeneration || 0) + 1;
     byId("toggle-live").textContent = state.livePaused ? "Resume stream" : "Pause stream";
     if (state.livePaused) {
         setLiveConnection("Stream paused", "paused");

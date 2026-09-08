@@ -209,6 +209,8 @@ def load_artifact(path: str | Path = MODEL_PATH):
 
 
 def apply_model(*, progress=print, session_ids: list[int] | None = None) -> int:
+    if session_ids == []:
+        return 0
     artifact = load_artifact()
     if artifact is None:
         raise FileNotFoundError(f"No trained model found at {MODEL_PATH}")
@@ -261,5 +263,6 @@ def apply_model(*, progress=print, session_ids: list[int] | None = None) -> int:
         conn.commit()
         updated += len(chunk)
         progress(f"Applied model to {updated:,}/{len(rows):,} sessions")
+    conn.commit()
     conn.close()
     return updated

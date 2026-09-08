@@ -3,6 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>HoneyTrace | Deception Intelligence</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
@@ -24,13 +25,15 @@
             <button class="nav-item" data-view="overview">Overview</button>
             <button class="nav-item live-nav active" data-view="live"><span class="nav-pulse" aria-hidden="true"></span>Live monitor</button>
             <button class="nav-item" data-view="sessions">Sessions</button>
+            <button class="nav-item" data-view="incidents">Incidents</button>
             <button class="nav-item" data-view="model">Model evaluation</button>
             <button class="nav-item" data-view="sources">Sensors</button>
             <button class="nav-item" data-view="imports">Imports</button>
         </nav>
         <div class="sidebar-note">
             <span class="status-dot" aria-hidden="true"></span>
-            <span>Read-only analyst view</span>
+            <span>{{ session.get('analyst') }}</span>
+            <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="stream-toggle">Sign out</button></form>
         </div>
     </aside>
 
@@ -59,6 +62,12 @@
         </section>
 
         <section class="view active" id="view-live">
+            <div class="panel filters live-filters">
+                <label>Sensor<select id="live-source"><option value="">All sensors</option><option value="custom-ssh">HoneyTrace SSH</option></select></label>
+                <label>Detection severity<select id="live-threat"><option value="">All severities</option><option>critical</option><option>high</option><option>medium</option><option>low</option></select></label>
+                <label>Feed window<select id="live-window"><option value="5">Last 5 minutes</option><option value="15">Last 15 minutes</option><option value="60">Last hour</option></select></label>
+                <button class="primary" id="apply-live">Apply</button>
+            </div>
             <article class="live-command panel">
                 <div class="live-heading">
                     <div class="live-state">
@@ -82,6 +91,11 @@
             </article>
 
             <div class="stat-grid live-stat-grid" id="live-stats"></div>
+            <div class="two-column">
+                <article class="panel"><div class="panel-heading"><h2>Sensor health</h2></div><div id="sensor-health" class="ops-content">Waiting for heartbeat</div></article>
+                <article class="panel"><div class="panel-heading"><h2>Activity · 15 minutes</h2></div><div class="chart-holder"><canvas id="activity-chart" aria-label="Events per minute" role="img"></canvas></div></article>
+            </div>
+            <article class="panel"><div class="panel-heading"><h2>Active SSH connections</h2><span class="quiet">From sensors with a current heartbeat</span></div><div id="active-connections" class="ops-content"></div></article>
 
             <div class="live-grid">
                 <article class="panel live-panel">
@@ -94,13 +108,21 @@
                 <article class="panel live-panel">
                     <div class="panel-heading">
                         <div><p class="eyebrow">ANALYSIS OUTPUT</p><h2>Live detections</h2></div>
-                        <span class="quiet">Classified after a connection closes</span>
+                        <span class="quiet">Updates as behavior arrives</span>
                     </div>
                     <div class="detection-feed" id="live-detections"><div class="live-empty">Waiting for classifications…</div></div>
                 </article>
             </div>
         </section>
 
+        <section class="view" id="view-incidents">
+            <div class="panel filters live-filters">
+                <label>Status<select id="incident-status"><option value="">All statuses</option><option>New</option><option>Investigating</option><option>Resolved</option></select></label>
+                <label>Severity<select id="incident-severity"><option value="">All severities</option><option>critical</option><option>high</option><option>medium</option><option>low</option></select></label>
+                <button id="refresh-incidents" class="primary">Apply filters</button>
+            </div>
+            <article class="panel"><div class="panel-heading"><h2>Incident queue</h2><span class="quiet">Latest 200 · repeated activity grouped by session</span></div><div id="incident-list" class="ops-content"></div></article>
+        </section>
         <section class="view" id="view-sessions">
             <article class="panel filter-panel">
                 <div class="filters">
@@ -163,5 +185,7 @@
 </dialog>
 
 <script src="{{ url_for('static', filename='dashboard.js') }}" defer></script>
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}" defer></script>
+<script src="{{ url_for('static', filename='operations.js') }}" defer></script>
 </body>
 </html>

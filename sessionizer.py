@@ -29,7 +29,16 @@ def _persist(conn, events: list[dict]) -> int:
             session_key,source_type,source_name,src_ip,first_seen,last_seen,duration_seconds,
             native_session_count,event_count,login_failures,login_successes,command_count,
             download_count,rule_label,rule_reason,final_label,threat_level)
-           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(session_key) DO UPDATE SET
+             last_seen=excluded.last_seen,duration_seconds=excluded.duration_seconds,
+             native_session_count=excluded.native_session_count,event_count=excluded.event_count,
+             login_failures=excluded.login_failures,login_successes=excluded.login_successes,
+             command_count=excluded.command_count,download_count=excluded.download_count,
+             rule_label=excluded.rule_label,rule_reason=excluded.rule_reason,
+             final_label=excluded.final_label,threat_level=excluded.threat_level,
+             predicted_label=NULL,prediction_confidence=NULL,model_version=NULL
+           RETURNING id""",
         (
             session_key, first["source_type"], first["source_name"], first["src_ip"],
             first["timestamp"], last["timestamp"], features["duration_seconds"],
@@ -39,9 +48,10 @@ def _persist(conn, events: list[dict]) -> int:
             decision.label, decision.reason, decision.label, decision.threat_level,
         ),
     )
-    session_id = cursor.lastrowid
+    session_id = cursor.fetchone()[0]
     conn.execute(
-        "INSERT INTO session_features(session_id,feature_json) VALUES(?,?)",
+        """INSERT INTO session_features(session_id,feature_json) VALUES(?,?)
+           ON CONFLICT(session_id) DO UPDATE SET feature_json=excluded.feature_json""",
         (session_id, json.dumps(features, sort_keys=True, separators=(",", ":"))),
     )
     event_ids = [int(event["id"]) for event in events]
@@ -103,19 +113,16 @@ def rebuild_identity(source_type: str, source_name: str, src_ip: str, *, gap_sec
     """Rebuild only one source identity; used by the live custom sensor."""
     init_db()
     conn = connect()
-    old_ids = [row["id"] for row in conn.execute(
-        "SELECT id FROM sessions WHERE source_type=? AND source_name=? AND src_ip=?",
+    latest = conn.execute(
+        """SELECT first_seen FROM sessions WHERE source_type=? AND source_name=? AND src_ip=?
+           ORDER BY first_seen DESC LIMIT 1""",
         (source_type, source_name, src_ip),
-    )]
-    if old_ids:
-        placeholders = ",".join("?" for _ in old_ids)
-        conn.execute(f"UPDATE events SET analysis_session_id=NULL WHERE analysis_session_id IN ({placeholders})", old_ids)
-        conn.execute(f"DELETE FROM sessions WHERE id IN ({placeholders})", old_ids)
+    ).fetchone()
 
     rows = [dict(row) for row in conn.execute(
-        """SELECT * FROM events WHERE source_type=? AND source_name=? AND src_ip=?
+        """SELECT * FROM events WHERE source_type=? AND source_name=? AND src_ip=? AND timestamp>=?
            ORDER BY timestamp,id""",
-        (source_type, source_name, src_ip),
+        (source_type, source_name, src_ip, latest["first_seen"] if latest else ""),
     )]
     session_ids: list[int] = []
     current: list[dict] = []

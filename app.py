@@ -13,11 +13,14 @@ from flask import Flask, jsonify, render_template, request
 from config import MASK_IPS
 from db import connect, init_db
 from privacy import mask_ip
+from operations import install_operations
+from live_api import install_live
 
 
 def create_app() -> Flask:
     init_db()
     app = Flask(__name__)
+    install_operations(app)
     cache: dict[str, tuple[float, object]] = {}
 
     def cached(seconds: int = 20):
@@ -52,6 +55,8 @@ def create_app() -> Flask:
             "nisec.session.closed": "Connection closed",
             "cowrie.command.input": "Command input recorded",
         }
+        if event_id == "nisec.command.input":
+            return "Command input recorded"
         if event_id in fixed:
             return fixed[event_id]
         if MASK_IPS:
@@ -108,79 +113,7 @@ def create_app() -> Flask:
         conn.close()
         return jsonify(rows)
 
-    @app.get("/api/live")
-    def live_monitor():
-        """Return small incremental batches for the near-real-time analyst view."""
-        after_event_id = max(request.args.get("after_event_id", 0, type=int), 0)
-        after_session_id = max(request.args.get("after_session_id", 0, type=int), 0)
-        limit = min(max(request.args.get("limit", 40, type=int), 10), 100)
-        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
-        conn = connect(readonly=True)
-        max_event_id = conn.execute("SELECT COALESCE(MAX(id),0) FROM events").fetchone()[0]
-        max_session_id = conn.execute("SELECT COALESCE(MAX(id),0) FROM sessions").fetchone()[0]
-
-        stats_row = conn.execute(
-            """SELECT
-               (SELECT COUNT(1) FROM events WHERE timestamp>=?) AS events_5m,
-               (SELECT COUNT(1) FROM sessions WHERE last_seen>=?) AS detections_5m,
-               (SELECT COUNT(1) FROM sessions WHERE last_seen>=? AND threat_level IN ('high','critical')) AS high_risk_5m,
-               (SELECT COUNT(DISTINCT src_ip) FROM events WHERE timestamp>=? AND src_ip IS NOT NULL) AS sources_5m""",
-            (cutoff, cutoff, cutoff, cutoff),
-        ).fetchone()
-
-        if after_event_id:
-            event_rows = conn.execute(
-                """SELECT id,timestamp,source_name,source_type,src_ip,event_id,message,username
-                   FROM events WHERE id>? ORDER BY id ASC LIMIT ?""",
-                (after_event_id, limit),
-            ).fetchall()
-        else:
-            event_rows = list(reversed(conn.execute(
-                """SELECT id,timestamp,source_name,source_type,src_ip,event_id,message,username
-                   FROM events WHERE timestamp>=? ORDER BY id DESC LIMIT ?""",
-                (cutoff, limit),
-            ).fetchall()))
-
-        if after_session_id:
-            session_rows = conn.execute(
-                """SELECT id,source_name,src_ip,last_seen,event_count,final_label,threat_level,
-                   prediction_confidence FROM sessions WHERE id>? ORDER BY id ASC LIMIT ?""",
-                (after_session_id, limit),
-            ).fetchall()
-        else:
-            session_rows = list(reversed(conn.execute(
-                """SELECT id,source_name,src_ip,last_seen,event_count,final_label,threat_level,
-                   prediction_confidence FROM sessions WHERE last_seen>=? ORDER BY id DESC LIMIT ?""",
-                (cutoff, limit),
-            ).fetchall()))
-
-        last_sensor_event = conn.execute(
-            "SELECT MAX(timestamp) FROM events WHERE source_name='custom-ssh'"
-        ).fetchone()[0]
-        conn.close()
-
-        events = []
-        for row in event_rows:
-            item = dict(row)
-            item["src_ip"] = display_ip(item["src_ip"])
-            item["message"] = safe_message(item["event_id"], item["message"])
-            events.append(item)
-        detections = []
-        for row in session_rows:
-            item = dict(row)
-            item["src_ip"] = display_ip(item["src_ip"])
-            detections.append(item)
-
-        return jsonify({
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "window_minutes": 5,
-            "stats": dict(stats_row),
-            "events": events,
-            "detections": detections,
-            "event_cursor": events[-1]["id"] if after_event_id and events else max_event_id if not after_event_id else after_event_id,
-            "session_cursor": detections[-1]["id"] if after_session_id and detections else max_session_id if not after_session_id else after_session_id,
-            "last_sensor_event": last_sensor_event,
-        })
+    install_live(app, display_ip, safe_message)
 
     @app.get("/api/sessions")
     def sessions():

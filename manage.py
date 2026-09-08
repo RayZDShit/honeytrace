@@ -128,10 +128,25 @@ def command_honeypot(args) -> None:
     run_honeypot(host=args.host, port=args.port)
 
 
+def command_analyst(args) -> None:
+    from getpass import getpass
+    from operations import create_analyst
+    init_db()
+    username = args.username or input("Analyst username: ").strip()
+    password = getpass("New password (12+ characters): ")
+    if password != getpass("Confirm password: "):
+        raise SystemExit("Passwords did not match.")
+    create_analyst(username, password)
+    print("Analyst account saved. Sign in at the dashboard.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     default_logs = BASE_DIR / "archive.zip"
     parser = argparse.ArgumentParser(description="NISec honeypot project manager")
     sub = parser.add_subparsers(dest="command", required=True)
+    analyst = sub.add_parser("analyst", help="Create or reset a local analyst account")
+    analyst.add_argument("--username")
+    analyst.set_defaults(func=command_analyst)
     sub.add_parser("init", help="Create the database schema").set_defaults(func=command_init)
 
     def add_import_arguments(target):
@@ -164,7 +179,7 @@ def build_parser() -> argparse.ArgumentParser:
     dashboard.add_argument("--dev", action="store_true", help="Use Flask's local server instead of Waitress")
     dashboard.set_defaults(func=command_dashboard)
 
-    honeypot = sub.add_parser("honeypot", help="Run the contained SSH-style sensor")
+    honeypot = sub.add_parser("honeypot", help="Run the contained SSHv2 sensor")
     honeypot.add_argument("--host", default="127.0.0.1")
     honeypot.add_argument("--port", type=int, default=2222)
     honeypot.set_defaults(func=command_honeypot)

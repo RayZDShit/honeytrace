@@ -75,7 +75,7 @@ def normalize_event(raw: dict[str, Any], source_type: str, source_name: str) -> 
         message = "Connection opened"
     elif event_id in {"cowrie.session.closed", "nisec.session.closed"}:
         message = "Connection closed"
-    elif event_id == "cowrie.command.input":
+    elif event_id in {"cowrie.command.input", "nisec.command.input"}:
         message = "Command input recorded"
     elif event_id in {"cowrie.session.file_download", "cowrie.session.file_upload"}:
         message = "File-transfer event recorded"

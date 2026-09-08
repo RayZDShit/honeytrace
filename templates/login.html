@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in | HoneyTrace</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body class="login-body">
+<main class="login-card panel">
+    <p class="eyebrow">HONEYTRACE</p><h1>Analyst sign in</h1>
+    <p>Access live telemetry and incident investigations.</p>
+    {% if error %}<p role="alert" class="threat-critical">{{ error }}</p>{% endif %}
+    <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Username<input name="username" autocomplete="username" maxlength="80" required autofocus></label>
+        <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+        <button class="primary">Sign in</button>
+    </form>
+    <p class="quiet">First use: create your analyst account with <code>manage.py analyst</code> in the project terminal.</p>
+</main></body></html>

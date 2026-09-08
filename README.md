@@ -1,10 +1,10 @@
 # HoneyTrace Deception Intelligence
 
-This project is a contained, low-interaction SSH-style honeypot and Cowrie telemetry analysis platform. It imports local Cowrie JSON logs, deduplicates them, groups related connections into behavioral sessions, assigns transparent rule labels, trains an evaluated machine-learning classifier, and presents the results in a read-only dashboard.
+HoneyTrace is a self-built SSH honeypot, behavioral analysis pipeline, and analyst console. AsyncSSH implements SSHv2 transport; HoneyTrace implements decoy authentication, a virtual terminal, telemetry capture, classification, and incident investigation. Cowrie remains a comparison baseline and optional historical data source; no Cowrie service is required.
 
-The system intentionally does **not** provide real SSH authentication, a shell, a filesystem, or command execution.
+The sensor supports real encrypted SSH connections and a simulated terminal. It never executes received commands on the host, accesses host files from the terminal, forwards connections, or transfers files.
 
-![HoneyTrace architecture](architecture_diagram.png)
+The operational path is SSH client → AsyncSSH sensor → event queue → SQLite → behavior features/rules/saved model → live dashboard and incidents. The existing architecture image predates the operational upgrades; this description is authoritative.
 
 ## Quick start
 
@@ -15,6 +15,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 python manage.py init
+python manage.py analyst --username admin
 ```
 
 Start the dashboard and contained sensor in separate terminals:
@@ -24,7 +25,11 @@ python manage.py dashboard
 python manage.py honeypot
 ```
 
-Then open `http://127.0.0.1:5000`. Press `Ctrl+C` in PowerShell to stop it.
+Then open `http://127.0.0.1:5000` and sign in using the analyst account you just created. Choose your own password of at least 12 characters. Press `Ctrl+C` in each PowerShell window to stop the services.
+
+On the existing school computer you can use `.\.python\python.exe` instead of `python`; install the updated requirements with that interpreter first. Your existing database and saved model are reused. You do not need to train the model again when reopening the project.
+
+See [the operator guide](docs/OPERATIONS.md) for the complete upgrade, daily startup, incident workflow, and troubleshooting steps.
 
 The repository intentionally excludes Cowrie archives, the generated database, credential-key material, virtual environments, and trained model artifacts. Supply your own authorized Cowrie JSON/ZIP data and run:
 
@@ -61,7 +66,9 @@ The accuracy limitations described below still apply.
 - Accuracy, balanced accuracy, macro-F1, per-class metrics, confusion matrix, and feature importance
 - A near-real-time monitoring view with incremental event and detection updates every two seconds
 - Pause/resume controls, visible stream health, five-minute activity counters, and masked source addresses
-- A safe custom SSH-style sensor that writes into the same event pipeline
+- A custom SSHv2 sensor with a contained virtual terminal and bounded connections
+- Sensor heartbeats, active connection list, analysis backlog, and a local Chart.js activity chart
+- Analyst login, CSRF protection, grouped incidents, investigation notes and CSV evidence export
 
 ## Important accuracy statement
 
@@ -80,8 +87,9 @@ This is still a useful project result: it demonstrates a reproducible behavioral
 | `feature_engineering.py` | Produces session-level numeric features |
 | `labeling.py` | Assigns transparent rule labels and threat levels |
 | `model_service.py` | Selects, trains, evaluates, saves, and applies the model |
-| `ssh_honeypot.py` | Runs the contained SSH-style sensor |
-| `app.py` | Provides the read-only dashboard API |
+| `ssh_honeypot.py`, `virtual_shell.py` | Real SSH transport and contained virtual terminal |
+| `app.py`, `live_api.py` | Protected dashboard and incremental telemetry API |
+| `operations.py` | Analyst authentication, sensor health and incident workflow |
 | `templates/`, `static/` | Dashboard interface |
 | `tests/` | Core labeling, feature, privacy, and ingestion tests |
 
@@ -95,7 +103,7 @@ cd C:\School\NISec
 
 ### 1. Confirm Python
 
-Use Python 3.11 or later:
+Use Python 3.12 or later (this release was tested with Python 3.14):
 
 ```powershell
 python --version
@@ -141,6 +149,8 @@ python manage.py init
 ```
 
 The private working database is created at `instance\nisec.db`. The credential fingerprint key is created when the first credential event is imported.
+
+Create your dashboard account with `python manage.py analyst --username admin` and choose a password of at least 12 characters.
 
 ## Importing the Cowrie logs
 
@@ -234,11 +244,12 @@ Dashboard sections:
 - **Overview:** totals, behavior distribution, threat distribution, and recent telemetry
 - **Live monitor:** two-second event updates, automatic classified detections, stream health, five-minute counters, and pause/resume controls
 - **Sessions:** filters and drill-down into grouped behavioral evidence
+- **Incidents:** grouped high-risk detections, investigation status, analyst notes, and CSV evidence
 - **Model evaluation:** balanced accuracy, macro-F1, confusion matrix, per-class results, and feature importance
 - **Sensors:** comparable event and risk statistics for each Cowrie sensor and the custom sensor
 - **Imports:** provenance, inserted counts, duplicates, invalid records, and status for every log file
 
-The Live monitor is the primary operational view. Raw events appear as the sensor records them. When a connection closes, HoneyTrace rebuilds the affected behavioral session and applies the saved model automatically; the resulting classification then appears in Live detections. Pausing the view does not stop collection—it only pauses on-screen updates. The Overview refreshes every 15 seconds, and addresses are masked in the interface by default.
+The Live monitor is the primary operational view. The sensor records and analyzes batches during active connections, then applies the saved model if available. Session revisions refresh existing detection cards as behavior changes. Pausing the view stops only on-screen updates, not collection. The Overview refreshes every 15 seconds, and addresses are masked by default.
 
 ## Running the contained sensor
 
@@ -249,7 +260,7 @@ cd C:\School\NISec
 .\.python\python.exe manage.py honeypot
 ```
 
-It listens only on `127.0.0.1:2222` by default. It has no successful authentication path and no shell. Its normalized events use the same database, session rules, model, and dashboard as imported Cowrie data.
+It listens only on `127.0.0.1:2222` by default. Decoy authentication leads to an in-memory virtual terminal, never the host shell. Its normalized events use the same database, session rules, model, and dashboard as optional imported Cowrie data. See the operator guide for configuration and containment limits.
 
 This guide intentionally stops at operating the sensor. Controlled testing traffic and attacker-side instructions should be documented separately and used only inside the isolated lab.
 
@@ -287,7 +298,7 @@ HoneyTrace is available under the [MIT License](LICENSE).
 
 ### `python` is not recognized
 
-Install Python 3.11+ from the official Python distribution, reopen PowerShell, and run `python --version` again.
+Install Python 3.12+ from the official Python distribution, reopen PowerShell, and run `python --version` again.
 
 ### Training says there are not enough supported labels
 
