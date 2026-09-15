@@ -23,7 +23,7 @@ Analyst passwords use Werkzeug scrypt hashes. Login attempts are limited per cli
 
 The SSH host key, dashboard signing key, analyst accounts, telemetry, and trained model stay in ignored local directories. The sensor decoy credential is separate from analyst authentication. The default lab-only decoy is root / honeytrace-lab, adjustable using HONEYTRACE_DECOY_PASSWORD. It grants no real system privileges.
 
-Submitted commands may contain secrets or personal data. The evidence viewer and exports are restricted to signed-in analysts; source addresses are masked by default. Do not place sensitive real values in test commands. Exports contain at most 5,000 evidence events and escape spreadsheet formulas.
+Submitted commands may contain secrets or personal data. The evidence viewer and exports are restricted to signed-in analysts. Complete source addresses are shown by default for investigation and are stored in the database. Set `NISEC_MASK_IPS=true` before starting the dashboard when displaying it to an audience that should not see those addresses. Do not place sensitive real values in test commands. Exports contain at most 5,000 evidence events and escape spreadsheet formulas.
 
 This release is a lab-oriented implementation, not a production certification. The queue is bounded in memory; abrupt process/OS failure can lose uncommitted events. Heartbeats and dropped-event counters make failures visible. Validate throughput, retention, backups, HTTPS and process supervision for any longer-running deployment.
 

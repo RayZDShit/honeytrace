@@ -53,6 +53,7 @@ For a second lab computer, bind the sensor to your specific host-only/private in
 - Processing retries a failed batch three times. The dropped-event counter also counts exhausted batches conservatively: some raw events may already be stored even if analysis failed. The in-memory queue is not durable across a crash.
 - Counters cover five minutes. The activity chart covers 15 minutes across sensors.
 - Feed filters select sensor, time window, and detection severity. Severity filters detections; raw events have no independent threat label.
+- Source addresses are displayed in full by default. To hide the last two IPv4 octets on a shared screen, set `$env:NISEC_MASK_IPS="true"` in the dashboard terminal before starting it.
 - Updates poll every two seconds and drain any backlog in bounded batches. The screen retains the latest 100 events and 60 detections; full evidence remains in the database.
 - Session revisions update existing cards after classification or model scoring. Click a detection to inspect evidence.
 - Pause freezes the view only. Collection continues. Resume catches up; changing filters refreshes the selected window.

@@ -65,7 +65,7 @@ The accuracy limitations described below still apply.
 - Group-isolated model evaluation so one source identity cannot appear in both training and holdout sets
 - Accuracy, balanced accuracy, macro-F1, per-class metrics, confusion matrix, and feature importance
 - A near-real-time monitoring view with incremental event and detection updates every two seconds
-- Pause/resume controls, visible stream health, five-minute activity counters, and masked source addresses
+- Pause/resume controls, visible stream health, five-minute activity counters, and complete source addresses for investigation
 - A custom SSHv2 sensor with a contained virtual terminal and bounded connections
 - Sensor heartbeats, active connection list, analysis backlog, and a local Chart.js activity chart
 - Analyst login, CSRF protection, grouped incidents, investigation notes and CSV evidence export
@@ -249,7 +249,7 @@ Dashboard sections:
 - **Sensors:** comparable event and risk statistics for each Cowrie sensor and the custom sensor
 - **Imports:** provenance, inserted counts, duplicates, invalid records, and status for every log file
 
-The Live monitor is the primary operational view. The sensor records and analyzes batches during active connections, then applies the saved model if available. Session revisions refresh existing detection cards as behavior changes. Pausing the view stops only on-screen updates, not collection. The Overview refreshes every 15 seconds, and addresses are masked by default.
+The Live monitor is the primary operational view. The sensor records and analyzes batches during active connections, then applies the saved model if available. Session revisions refresh existing detection cards as behavior changes. Pausing the view stops only on-screen updates, not collection. The Overview refreshes every 15 seconds. Complete source addresses are shown by default so an analyst can correlate evidence. Set `NISEC_MASK_IPS=true` before starting the dashboard to mask them on shared screens.
 
 ## Running the contained sensor
 
