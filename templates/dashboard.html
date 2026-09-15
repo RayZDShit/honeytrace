@@ -26,9 +26,7 @@
             <button class="nav-item live-nav active" data-view="live"><span class="nav-pulse" aria-hidden="true"></span>Live monitor</button>
             <button class="nav-item" data-view="sessions">Sessions</button>
             <button class="nav-item" data-view="incidents">Incidents</button>
-            <button class="nav-item" data-view="model">Model evaluation</button>
-            <button class="nav-item" data-view="sources">Sensors</button>
-            <button class="nav-item" data-view="imports">Imports</button>
+            <button class="nav-item" data-view="model">Detection analytics</button>
         </nav>
         <div class="sidebar-note">
             <span class="status-dot" aria-hidden="true"></span>
@@ -78,15 +76,6 @@
                         <span class="quiet" id="live-updated">Waiting for first update</span>
                         <button id="toggle-live" class="stream-toggle" type="button">Pause stream</button>
                     </div>
-                </div>
-                <div class="monitor-pipeline" aria-label="Detection pipeline">
-                    <div><span>1</span><strong>Connection</strong><small>Sensor accepts telemetry</small></div>
-                    <i aria-hidden="true">→</i>
-                    <div><span>2</span><strong>Capture</strong><small>Events stored safely</small></div>
-                    <i aria-hidden="true">→</i>
-                    <div><span>3</span><strong>Analyze</strong><small>Behavior grouped</small></div>
-                    <i aria-hidden="true">→</i>
-                    <div><span>4</span><strong>Classify</strong><small>Rules and model score</small></div>
                 </div>
             </article>
 
@@ -169,13 +158,6 @@
             </div>
         </section>
 
-        <section class="view" id="view-sources">
-            <article class="panel"><div class="panel-heading"><div><p class="eyebrow">COMPARATIVE TELEMETRY</p><h2>Sensor summary</h2></div></div><div class="table-wrap"><table><thead><tr><th>Sensor</th><th>Type</th><th>Sessions</th><th>Events</th><th>Failed</th><th>Successful</th><th>Commands</th><th>Downloads</th><th>High risk</th></tr></thead><tbody id="source-rows"></tbody></table></div></article>
-        </section>
-
-        <section class="view" id="view-imports">
-            <article class="panel"><div class="panel-heading"><div><p class="eyebrow">DATA PROVENANCE</p><h2>Import history</h2></div></div><div class="table-wrap"><table><thead><tr><th>Imported</th><th>Sensor</th><th>File</th><th>Lines</th><th>Inserted</th><th>Duplicates</th><th>Invalid</th><th>Status</th></tr></thead><tbody id="import-rows"></tbody></table></div></article>
-        </section>
     </main>
 </div>
 

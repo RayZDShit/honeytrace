@@ -349,23 +349,7 @@ async function loadModel() {
     } catch (error) { setStatus(`Model error: ${error.message}`, true); }
 }
 
-async function loadSources() {
-    try {
-        const data = await api("/api/sources"), body = byId("source-rows"); clear(body);
-        data.forEach(source => { const row = document.createElement("tr"); [source.source_name, source.source_type, fmt(source.sessions), fmt(source.events), fmt(source.failed_logins), fmt(source.successful_logins), fmt(source.commands), fmt(source.downloads), fmt(source.high_risk)].forEach(value => addCell(row, value)); body.append(row); });
-        setStatus(`Loaded ${data.length} sensors`);
-    } catch (error) { setStatus(`Sensor error: ${error.message}`, true); }
-}
-
-async function loadImports() {
-    try {
-        const data = await api("/api/imports"), body = byId("import-rows"); clear(body);
-        data.forEach(item => { const row = document.createElement("tr"); [when(item.imported_at), item.source_name, item.member_path, fmt(item.lines_seen), fmt(item.events_inserted), fmt(item.duplicates_skipped), fmt(item.invalid_lines), item.status].forEach(value => addCell(row, value)); body.append(row); });
-        setStatus(`Loaded ${data.length} import records`);
-    } catch (error) { setStatus(`Import error: ${error.message}`, true); }
-}
-
-const loaders = { overview: loadOverview, live: () => loadLive(!state.liveInitialized), sessions: loadSessions, incidents: () => loadIncidents(), model: loadModel, sources: loadSources, imports: loadImports };
+const loaders = { overview: loadOverview, live: () => loadLive(!state.liveInitialized), sessions: loadSessions, incidents: () => loadIncidents(), model: loadModel };
 document.querySelectorAll(".nav-item").forEach(button => button.addEventListener("click", () => {
     state.view = button.dataset.view;
     document.querySelectorAll(".nav-item").forEach(item => item.classList.toggle("active", item === button));

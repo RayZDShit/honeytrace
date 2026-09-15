@@ -245,9 +245,9 @@ Dashboard sections:
 - **Live monitor:** two-second event updates, automatic classified detections, stream health, five-minute counters, and pause/resume controls
 - **Sessions:** filters and drill-down into grouped behavioral evidence
 - **Incidents:** grouped high-risk detections, investigation status, analyst notes, and CSV evidence
-- **Model evaluation:** balanced accuracy, macro-F1, confusion matrix, per-class results, and feature importance
-- **Sensors:** comparable event and risk statistics for each Cowrie sensor and the custom sensor
-- **Imports:** provenance, inserted counts, duplicates, invalid records, and status for every log file
+- **Detection analytics:** balanced accuracy, macro-F1, confusion matrix, per-class results, and feature importance
+
+Sensor health and active connections are shown in Live monitor. Historical import management remains available through `manage.py`; import and source records are retained in the database and protected APIs.
 
 The Live monitor is the primary operational view. The sensor records and analyzes batches during active connections, then applies the saved model if available. Session revisions refresh existing detection cards as behavior changes. Pausing the view stops only on-screen updates, not collection. The Overview refreshes every 15 seconds. Complete source addresses are shown by default so an analyst can correlate evidence. Set `NISEC_MASK_IPS=true` before starting the dashboard to mask them on shared screens.
 
