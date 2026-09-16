@@ -199,8 +199,6 @@ async function loadAlerts(initial = false) {
         const badge = byId("alert-count");
         badge.textContent = data.unread > 99 ? "99+" : String(data.unread);
         badge.hidden = data.unread === 0;
-        byId("discord-alert-status").textContent = data.discord_configured
-            ? "Discord webhook configured" : "Discord webhook not configured";
         const maxId = data.alerts.reduce((maximum, alert) => Math.max(maximum, alert.id), 0);
         if (!initial && alertCursor) {
             const newest = data.alerts.filter(alert => alert.id > alertCursor).sort((a, b) => a.id - b.id);
@@ -212,10 +210,53 @@ async function loadAlerts(initial = false) {
     }
 }
 
+async function loadDiscordSettings() {
+    try {
+        const data = await api("/api/settings/discord");
+        byId("discord-alert-status").textContent = data.configured
+            ? `Configured${data.updated_by ? " by " + data.updated_by : ""}`
+            : "Not configured";
+        byId("remove-discord-webhook").disabled = !data.configured;
+    } catch (error) {
+        byId("discord-setting-message").textContent = error.message;
+    }
+}
+
+async function saveDiscordWebhook() {
+    const input = byId("discord-webhook"), message = byId("discord-setting-message");
+    const webhook = input.value.trim();
+    if (!webhook) { message.textContent = "Enter the webhook URL first."; return; }
+    message.textContent = "Saving…";
+    try {
+        const response = await fetch("/api/settings/discord", {
+            method: "PUT", headers: csrfHeaders(), body: JSON.stringify({webhook}),
+            signal: AbortSignal.timeout(15000),
+        });
+        if (!response.ok) throw new Error((await response.json()).error || "Unable to save webhook");
+        input.value = "";
+        message.textContent = "Webhook saved. New alerts will be sent with the complete source IP.";
+        await loadDiscordSettings(); await loadAlerts();
+    } catch (error) { message.textContent = error.message; }
+}
+
+async function removeDiscordWebhook() {
+    const message = byId("discord-setting-message");
+    message.textContent = "Removing…";
+    try {
+        const response = await fetch("/api/settings/discord", {
+            method: "DELETE", headers: csrfHeaders(), signal: AbortSignal.timeout(15000),
+        });
+        if (!response.ok) throw new Error((await response.json()).error || "Unable to remove webhook");
+        byId("discord-webhook").value = "";
+        message.textContent = "Discord delivery disabled.";
+        await loadDiscordSettings(); await loadAlerts();
+    } catch (error) { message.textContent = error.message; }
+}
+
 function openAlertDrawer() {
     byId("alert-drawer").hidden = false; byId("alert-overlay").hidden = false;
     byId("alert-button").setAttribute("aria-expanded", "true");
-    loadAlerts();
+    loadAlerts(); loadDiscordSettings();
 }
 
 function closeAlertDrawer() {
@@ -240,6 +281,8 @@ byId("toggle-alert-sound").addEventListener("click", () => {
     localStorage.setItem("honeytrace-alert-sound", alertSoundMuted ? "muted" : "enabled");
     byId("toggle-alert-sound").textContent = alertSoundMuted ? "Enable critical sound" : "Mute critical sound";
 });
+byId("save-discord-webhook").addEventListener("click", saveDiscordWebhook);
+byId("remove-discord-webhook").addEventListener("click", removeDiscordWebhook);
 byId("acknowledge-alerts").addEventListener("click", async () => {
     const response = await fetch("/api/alerts/acknowledge-all", {
         method: "POST", headers: csrfHeaders(), signal: AbortSignal.timeout(15000),
@@ -248,5 +291,6 @@ byId("acknowledge-alerts").addEventListener("click", async () => {
     loadAlerts();
 });
 loadAlerts(true);
+loadDiscordSettings();
 setInterval(() => loadAlerts(), 5000);
 setInterval(() => { if (state.view === "incidents" && !byId("session-dialog").open) loadIncidents(); }, 10000);

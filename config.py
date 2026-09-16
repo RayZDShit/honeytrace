@@ -20,10 +20,6 @@ MAX_HONEYPOT_WORKERS = int(os.getenv("NISEC_MAX_HONEYPOT_WORKERS", "50"))
 MODEL_MIN_CLASS_SAMPLES = int(os.getenv("NISEC_MODEL_MIN_CLASS_SAMPLES", "40"))
 MODEL_MAX_CLASS_SAMPLES = int(os.getenv("NISEC_MODEL_MAX_CLASS_SAMPLES", "15000"))
 
-# Analysts need the complete source address for investigation and correlation.
-# Privacy masking remains available as an explicit deployment option.
-MASK_IPS = os.getenv("NISEC_MASK_IPS", "false").lower() not in {"0", "false", "no"}
-
 
 def ensure_directories() -> None:
     INSTANCE_DIR.mkdir(parents=True, exist_ok=True)

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import csv
+import base64
+import hashlib
 import hmac
 import io
 import os
@@ -16,11 +18,14 @@ from datetime import datetime, timedelta, timezone
 from threading import Lock
 
 from flask import Blueprint, Response, jsonify, redirect, render_template, request, session
+from cryptography.fernet import Fernet, InvalidToken
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from config import INSTANCE_DIR, MASK_IPS
+from config import INSTANCE_DIR
 from db import connect, utc_now
-from privacy import mask_ip
+
+
+DASHBOARD_KEY_PATH = INSTANCE_DIR / "dashboard.key"
 
 
 def create_analyst(username: str, password: str) -> None:
@@ -34,14 +39,43 @@ def create_analyst(username: str, password: str) -> None:
         )
 
 
-def _discord_webhook() -> str | None:
-    value = os.getenv("HONEYTRACE_DISCORD_WEBHOOK", "").strip()
+def _dashboard_key() -> str:
+    if not DASHBOARD_KEY_PATH.exists():
+        try:
+            with DASHBOARD_KEY_PATH.open("x") as handle:
+                handle.write(secrets.token_hex(32))
+        except FileExistsError:
+            pass
+    return DASHBOARD_KEY_PATH.read_text().strip()
+
+
+def _settings_cipher() -> Fernet:
+    digest = hashlib.sha256(_dashboard_key().encode("utf-8")).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
+
+def _valid_discord_webhook(value: str) -> bool:
     if not value:
-        return None
+        return False
     parsed = urlparse(value)
-    if parsed.scheme != "https" or parsed.hostname not in {"discord.com", "discordapp.com"} or not parsed.path.startswith("/api/webhooks/"):
+    return (parsed.scheme == "https" and parsed.hostname in {"discord.com", "discordapp.com"}
+            and parsed.path.startswith("/api/webhooks/") and not parsed.username and not parsed.password)
+
+
+def _discord_webhook() -> str | None:
+    try:
+        with connect(readonly=True) as conn:
+            row = conn.execute(
+                "SELECT encrypted_value FROM system_settings WHERE setting_key='discord_webhook'").fetchone()
+    except Exception:
         return None
-    return value
+    if not row:
+        return None
+    try:
+        value = _settings_cipher().decrypt(row["encrypted_value"].encode("ascii")).decode("utf-8")
+    except (InvalidToken, UnicodeDecodeError, ValueError):
+        return None
+    return value if _valid_discord_webhook(value) else None
 
 
 def _deliver_discord_alert(alert_id: int) -> None:
@@ -52,8 +86,7 @@ def _deliver_discord_alert(alert_id: int) -> None:
         alert = conn.execute("SELECT * FROM alerts WHERE id=?", (alert_id,)).fetchone()
     if not alert or alert["discord_status"] == "sent":
         return
-    include_ip = os.getenv("HONEYTRACE_DISCORD_INCLUDE_IP", "false").lower() in {"1", "true", "yes"}
-    source = alert["src_ip"] if include_ip else mask_ip(alert["src_ip"])
+    source = alert["src_ip"]
     titles = {"new": "New security incident", "escalated": "Incident escalated", "reopened": "Incident reopened"}
     payload = {
         "username": "HoneyTrace",
@@ -151,21 +184,11 @@ def operational_status():
             now - datetime.fromisoformat(sensor["heartbeat"])).total_seconds() < 15
         if not sensor["online"]:
             sensor["active_connections"] = 0
-    for item in active:
-        if MASK_IPS:
-            item["src_ip"] = mask_ip(item["src_ip"])
     return {"sensors": sensors, "active_connections": active, "timeline": timeline}
 
 
 def install_operations(app):
-    secret_path = INSTANCE_DIR / "dashboard.key"
-    if not secret_path.exists():
-        try:
-            with secret_path.open("x") as handle:
-                handle.write(secrets.token_hex(32))
-        except FileExistsError:
-            pass
-    app.secret_key = secret_path.read_text().strip()
+    app.secret_key = _dashboard_key()
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Strict",
         SESSION_COOKIE_SECURE=os.getenv("HONEYTRACE_HTTPS", "false").lower() == "true",
@@ -187,7 +210,7 @@ def install_operations(app):
     def protect():
         if request.endpoint in {"static", "health"}:
             return None
-        if request.method in {"POST", "PATCH", "DELETE"}:
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
             supplied = request.headers.get("X-CSRF-Token") or request.form.get("csrf_token", "")
             if not session.get("csrf") or not hmac.compare_digest(supplied, session["csrf"]):
                 return jsonify(error="Session expired. Reload and try again."), 403
@@ -265,9 +288,6 @@ def install_operations(app):
         with connect(readonly=True) as conn:
             rows = [dict(r) for r in conn.execute(
                 "SELECT * FROM incidents" + where + " ORDER BY updated_at DESC LIMIT 200", values)]
-        for row in rows:
-            if MASK_IPS:
-                row["src_ip"] = mask_ip(row["src_ip"])
         return jsonify(rows)
 
     @bp.get("/api/alerts")
@@ -278,12 +298,39 @@ def install_operations(app):
                 "SELECT * FROM alerts ORDER BY id DESC LIMIT ?", (limit,))]
             unread = conn.execute("SELECT COUNT(*) FROM alerts WHERE acknowledged_at IS NULL").fetchone()[0]
         for row in rows:
-            if MASK_IPS:
-                row["src_ip"] = mask_ip(row["src_ip"])
             row.pop("alert_key", None)
             row.pop("session_key", None)
             row.pop("discord_error", None)
         return jsonify(alerts=rows, unread=unread, discord_configured=bool(_discord_webhook()))
+
+    @bp.route("/api/settings/discord", methods=["GET", "PUT", "DELETE"])
+    def discord_settings():
+        if request.method == "GET":
+            with connect(readonly=True) as conn:
+                row = conn.execute(
+                    "SELECT updated_at,updated_by FROM system_settings WHERE setting_key='discord_webhook'").fetchone()
+            configured = bool(row and _discord_webhook())
+            return jsonify(configured=configured,
+                           updated_at=row["updated_at"] if configured else None,
+                           updated_by=row["updated_by"] if configured else None)
+        if request.method == "DELETE":
+            with connect() as conn:
+                conn.execute("DELETE FROM system_settings WHERE setting_key='discord_webhook'")
+            return jsonify(ok=True, configured=False)
+        data = request.get_json(silent=True) or {}
+        webhook = data.get("webhook", "") if isinstance(data, dict) else ""
+        if not isinstance(webhook, str) or len(webhook) > 2000 or not _valid_discord_webhook(webhook.strip()):
+            return jsonify(error="Enter a valid Discord webhook URL"), 400
+        encrypted = _settings_cipher().encrypt(webhook.strip().encode("utf-8")).decode("ascii")
+        with connect() as conn:
+            conn.execute(
+                """INSERT INTO system_settings(setting_key,encrypted_value,updated_at,updated_by)
+                   VALUES('discord_webhook',?,?,?) ON CONFLICT(setting_key) DO UPDATE SET
+                   encrypted_value=excluded.encrypted_value,updated_at=excluded.updated_at,
+                   updated_by=excluded.updated_by""",
+                (encrypted, utc_now(), session["analyst"]),
+            )
+        return jsonify(ok=True, configured=True)
 
     @bp.patch("/api/alerts/<int:alert_id>")
     def acknowledge_alert(alert_id):
@@ -333,8 +380,6 @@ def install_operations(app):
             notes = [dict(r) for r in conn.execute(
                 "SELECT author,body,created_at FROM incident_notes WHERE incident_id=? ORDER BY id", (incident_id,))]
         item = dict(row)
-        if MASK_IPS:
-            item["src_ip"] = mask_ip(item["src_ip"])
         return jsonify(incident=item, notes=notes)
 
     @bp.get("/api/incidents/<int:incident_id>/export.csv")
@@ -352,9 +397,6 @@ def install_operations(app):
         writer = csv.writer(stream)
         def safe(value):
             value = str(value or "")
-            if MASK_IPS:
-                import re
-                value = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", lambda m: mask_ip(m[0]) or "", value)
             return "'" + value if value.lstrip().startswith(("=", "+", "-", "@")) or value.startswith(("\t", "\r", "\n")) else value
         writer.writerow(["HoneyTrace incident", incident_id])
         for key in ("sensor", "src_ip", "category", "severity", "status", "first_seen", "last_seen", "event_count", "reason"):

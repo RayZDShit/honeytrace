@@ -15,14 +15,13 @@ os.environ["NISEC_MODEL_DIR"] = str(Path(temporary.name) / "model")
 os.environ["NISEC_DB_PATH"] = str(Path(temporary.name) / "test.db")
 os.environ["NISEC_SECRET_KEY_PATH"] = str(Path(temporary.name) / "credential.key")
 os.environ["NISEC_MODEL_PATH"] = str(Path(temporary.name) / "missing.joblib")
-os.environ["NISEC_MASK_IPS"] = "true"
+os.environ["NISEC_MASK_IPS"] = "true"  # Legacy setting must not hide source addresses.
 os.environ["HONEYTRACE_DECOY_PASSWORD"] = "integration-decoy"
-os.environ.pop("HONEYTRACE_DISCORD_WEBHOOK", None)
 
 import asyncssh
 from app import app
 from db import connect, utc_now
-from operations import _deliver_discord_alert, create_analyst, sync_incidents
+from operations import create_analyst, sync_incidents
 from ssh_honeypot import HoneySSH, SensorRuntime, persist_batch
 from virtual_shell import VirtualShell
 
@@ -52,31 +51,44 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(signed.get("/api/live?initial=true").status_code, 200)
         self.assertEqual(signed.post("/logout").status_code, 403)
 
-    def test_discord_delivery_masks_source_address(self):
+    def test_dashboard_stores_discord_webhook_and_delivers_full_source_address(self):
+        client = self.signed_in()
+        with client.session_transaction() as session:
+            headers = {"X-CSRF-Token": session["csrf"]}
+        webhook = "https://discord.com/api/webhooks/123/test-token"
+        self.assertEqual(client.put("/api/settings/discord", json={"webhook": webhook}).status_code, 403)
+        self.assertEqual(client.put("/api/settings/discord", headers=headers,
+                                    json={"webhook": webhook}).status_code, 200)
+        setting = client.get("/api/settings/discord").get_json()
+        self.assertTrue(setting["configured"])
+        self.assertNotIn("webhook", setting)
+        with connect(readonly=True) as conn:
+            stored = conn.execute(
+                "SELECT encrypted_value FROM system_settings WHERE setting_key='discord_webhook'").fetchone()[0]
+        self.assertNotEqual(stored, webhook)
+        self.assertNotIn("test-token", stored)
+
         def event(kind, **kwargs):
             return dict(eventid=kind, timestamp=utc_now(), session="discord-delivery-test",
                         src_ip="198.51.100.44", src_port=41000, protocol="ssh", **kwargs)
-        persist_batch([event("nisec.login.success", username="root", password="fixture"),
-                       event("nisec.command.input", input="whoami")])
-        with connect(readonly=True) as conn:
-            alert_id = conn.execute(
-                "SELECT id FROM alerts WHERE src_ip='198.51.100.44' ORDER BY id DESC LIMIT 1").fetchone()[0]
-        os.environ["HONEYTRACE_DISCORD_WEBHOOK"] = "https://discord.com/api/webhooks/123/test-token"
         response = MagicMock(status=204)
         try:
             with patch("operations.urlopen") as mocked_urlopen:
                 mocked_urlopen.return_value.__enter__.return_value = response
-                _deliver_discord_alert(alert_id)
+                persist_batch([event("nisec.login.success", username="root", password="fixture"),
+                               event("nisec.command.input", input="whoami")])
             request_object = mocked_urlopen.call_args.args[0]
             payload = json.loads(request_object.data.decode("utf-8"))
             source_field = next(field for field in payload["embeds"][0]["fields"]
                                 if field["name"] == "Source")
-            self.assertEqual(source_field["value"], "198.51.x.x")
+            self.assertEqual(source_field["value"], "198.51.100.44")
             with connect(readonly=True) as conn:
-                self.assertEqual(conn.execute("SELECT discord_status FROM alerts WHERE id=?",
-                                              (alert_id,)).fetchone()[0], "sent")
+                self.assertEqual(conn.execute(
+                    "SELECT discord_status FROM alerts WHERE src_ip='198.51.100.44' ORDER BY id DESC LIMIT 1"
+                ).fetchone()[0], "sent")
         finally:
-            os.environ.pop("HONEYTRACE_DISCORD_WEBHOOK", None)
+            self.assertEqual(client.delete("/api/settings/discord", headers=headers).status_code, 200)
+            self.assertFalse(client.get("/api/settings/discord").get_json()["configured"])
 
     def test_stable_session_revision_and_incident_workflow(self):
         client = self.signed_in()
@@ -94,7 +106,7 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(first_alert["discord_status"], "disabled")
         alerts = client.get("/api/alerts").get_json()
         self.assertEqual(alerts["unread"], baseline_unread + 1)
-        self.assertEqual(alerts["alerts"][0]["src_ip"], "192.0.x.x")
+        self.assertEqual(alerts["alerts"][0]["src_ip"], "192.0.2.55")
         self.assertFalse(alerts["discord_configured"])
         snapshot = client.get("/api/live?initial=true").get_json()
         persist_batch([event("nisec.command.input", input="pwd")])
@@ -109,7 +121,7 @@ class WorkflowTests(unittest.TestCase):
             "after_event_id": snapshot["event_cursor"], "after_revision": snapshot["revision"]}).get_json()
         scored = next(d for d in update["detections"] if d["id"] == original["id"])
         self.assertEqual(scored["prediction_confidence"], .91)
-        self.assertEqual(scored["src_ip"], "192.0.x.x")
+        self.assertEqual(scored["src_ip"], "192.0.2.55")
         with client.session_transaction() as session:
             token = session["csrf"]
         headers = {"X-CSRF-Token": token}
@@ -139,7 +151,7 @@ class WorkflowTests(unittest.TestCase):
         client.patch(f"/api/incidents/{iid}", headers=headers, json={"note": "=1+1"})
         self.assertIn("'=1+1", client.get(f"/api/incidents/{iid}/export.csv").get_data(as_text=True))
         self.assertNotIn("sensitive-test", exported)
-        self.assertNotIn("192.0.2.55", exported)
+        self.assertIn("192.0.2.55", exported)
         client.patch(f"/api/incidents/{iid}", headers=headers, json={"status": "Resolved"})
         persist_batch([event("nisec.command.input", input="id")])
         self.assertEqual(client.get(f"/api/incidents/{iid}").get_json()["incident"]["status"], "New")

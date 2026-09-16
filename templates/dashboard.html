@@ -176,7 +176,19 @@
         <button id="acknowledge-alerts" class="stream-toggle" type="button">Acknowledge all</button>
         <button id="toggle-alert-sound" class="stream-toggle" type="button">Mute critical sound</button>
     </div>
-    <p id="discord-alert-status" class="quiet alert-channel-status"></p>
+    <section class="discord-settings" aria-labelledby="discord-settings-title">
+        <div><p class="eyebrow">EXTERNAL ALERT CHANNEL</p><h3 id="discord-settings-title">Discord webhook</h3></div>
+        <p id="discord-alert-status" class="quiet alert-channel-status"></p>
+        <label>Webhook URL
+            <input id="discord-webhook" type="password" autocomplete="off" placeholder="https://discord.com/api/webhooks/…">
+        </label>
+        <p class="quiet">Stored encrypted in the local database. HoneyTrace sends the complete source IP.</p>
+        <div class="discord-setting-actions">
+            <button id="save-discord-webhook" class="stream-toggle" type="button">Save webhook</button>
+            <button id="remove-discord-webhook" class="stream-toggle danger-action" type="button">Remove</button>
+        </div>
+        <p id="discord-setting-message" class="quiet" role="status" aria-live="polite"></p>
+    </section>
     <div id="alert-list" class="alert-list"><p class="quiet">Loading alerts…</p></div>
 </aside>
 <div id="alert-toast" class="alert-toast" role="status" aria-live="assertive" hidden></div>

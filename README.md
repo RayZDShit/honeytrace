@@ -27,7 +27,7 @@ python manage.py honeypot
 
 Then open `http://127.0.0.1:5000` and sign in using the analyst account you just created. Choose your own password of at least 12 characters. Press `Ctrl+C` in each PowerShell window to stop the services.
 
-High and critical incidents create persistent dashboard alerts. Alerts are grouped by incident instead of being emitted for every event, and analysts can acknowledge them from the alert drawer. Optional Discord webhook delivery is described in [the operator guide](docs/OPERATIONS.md); it is disabled unless you configure it locally.
+High and critical incidents create persistent dashboard alerts. Alerts are grouped by incident instead of being emitted for every event, and analysts can acknowledge them from the alert drawer. An analyst can securely save or remove an optional Discord webhook from the drawer; it is disabled until configured.
 
 On the existing school computer you can use `.\.python\python.exe` instead of `python`; install the updated requirements with that interpreter first. Your existing database and saved model are reused. You do not need to train the model again when reopening the project.
 
@@ -71,7 +71,8 @@ The accuracy limitations described below still apply.
 - A custom SSHv2 sensor with a contained virtual terminal and bounded connections
 - Sensor heartbeats, active connection list, analysis backlog, and a local Chart.js activity chart
 - Analyst login, CSRF protection, grouped incidents, persistent high/critical alerts, investigation notes and CSV evidence export
-- Optional Discord webhook notifications with masked source addresses by default
+- Optional Discord webhook notifications configured from the dashboard and stored encrypted locally
+- Complete source IP addresses throughout the dashboard, evidence exports, and Discord alerts
 
 ## Important accuracy statement
 
@@ -252,7 +253,7 @@ Dashboard sections:
 
 Sensor health and active connections are shown in Live monitor. Historical import management remains available through `manage.py`; import and source records are retained in the database and protected APIs.
 
-The Live monitor is the primary operational view. The sensor records and analyzes batches during active connections, then applies the saved model if available. Session revisions refresh existing detection cards as behavior changes. Pausing the view stops only on-screen updates, not collection. The Overview refreshes every 15 seconds. Complete source addresses are shown by default so an analyst can correlate evidence. Set `NISEC_MASK_IPS=true` before starting the dashboard to mask them on shared screens.
+The Live monitor is the primary operational view. The sensor records and analyzes batches during active connections, then applies the saved model if available. Session revisions refresh existing detection cards as behavior changes. Pausing the view stops only on-screen updates, not collection. The Overview refreshes every 15 seconds. Complete source addresses are always shown so an analyst can correlate evidence.
 
 ## Running the contained sensor
 

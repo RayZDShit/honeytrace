@@ -4,3 +4,4 @@ numpy==2.5.2
 scikit-learn==1.9.0
 waitress==3.0.2
 asyncssh==2.24.0
+cryptography==50.0.1

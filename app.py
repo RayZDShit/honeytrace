@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 import json
-import re
 import time
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 from flask import Flask, jsonify, render_template, request
 
-from config import MASK_IPS
 from db import connect, init_db
-from privacy import mask_ip
 from operations import install_operations
 from live_api import install_live
 
@@ -39,7 +36,7 @@ def create_app() -> Flask:
         return decorator
 
     def display_ip(value):
-        return mask_ip(value) if MASK_IPS else value
+        return value
 
     def safe_message(event_id, message):
         if not message:
@@ -59,8 +56,6 @@ def create_app() -> Flask:
             return "Command input recorded"
         if event_id in fixed:
             return fixed[event_id]
-        if MASK_IPS:
-            return re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", lambda match: mask_ip(match.group(0)) or "", message)
         return message
 
     @app.get("/")

@@ -42,33 +42,11 @@ HoneyTrace creates a persistent alert when a high or critical incident first app
 Dashboard alerts work without an internet connection. Discord delivery is optional and disabled by default. To enable it:
 
 1. In your private Discord server, open **Server Settings → Integrations → Webhooks**, create a webhook for the intended alert channel, and copy its URL.
-2. Set the URL in each PowerShell window before starting the sensor and dashboard. Do not paste the URL into source code, documentation, screenshots, chat, or Git.
+2. Sign in to HoneyTrace, open **Alerts**, enter the URL under **Discord webhook**, and select **Save webhook**.
 
-Terminal 1:
+The setting takes effect immediately for new alerts; neither service needs to restart and the model does not need retraining. The URL is encrypted with the local dashboard key before it is stored in the shared SQLite database. The browser and dashboard API never receive the saved URL again. Select **Remove** to disable Discord delivery and delete the stored setting.
 
-```powershell
-cd C:\School\NISec
-$env:HONEYTRACE_DISCORD_WEBHOOK="https://discord.com/api/webhooks/REPLACE_WITH_YOUR_PRIVATE_WEBHOOK"
-.\.python\python.exe manage.py honeypot
-```
-
-Terminal 2:
-
-```powershell
-cd C:\School\NISec
-$env:HONEYTRACE_DISCORD_WEBHOOK="https://discord.com/api/webhooks/REPLACE_WITH_YOUR_PRIVATE_WEBHOOK"
-.\.python\python.exe manage.py dashboard
-```
-
-The sensor process sends the notification, while setting the same value in the dashboard process lets the alert drawer show that Discord is configured. Restart both processes after changing the setting. This does not require importing data or retraining the model.
-
-Discord messages mask the last two IPv4 octets by default because they leave your computer. If you have approval to send complete source addresses to Discord, set this only in the sensor terminal before starting it:
-
-```powershell
-$env:HONEYTRACE_DISCORD_INCLUDE_IP="true"
-```
-
-Keep the default for classroom projection and ordinary testing. The webhook is a secret: anyone holding it can post to the channel. If it is exposed, delete or rotate it in Discord immediately. HoneyTrace never returns the webhook URL through its dashboard API.
+HoneyTrace always displays, exports, and sends the complete source IP. The webhook is a secret: anyone holding it can post to the channel. Use a private Discord channel, do not place the URL in source code, documentation, screenshots, chat, or Git, and rotate it immediately if exposed.
 
 ## Sensor behavior
 
@@ -88,7 +66,7 @@ For a second lab computer, bind the sensor to your specific host-only/private in
 - Processing retries a failed batch three times. The dropped-event counter also counts exhausted batches conservatively: some raw events may already be stored even if analysis failed. The in-memory queue is not durable across a crash.
 - Counters cover five minutes. The activity chart covers 15 minutes across sensors.
 - Feed filters select sensor, time window, and detection severity. Severity filters detections; raw events have no independent threat label.
-- Source addresses are displayed in full by default. To hide the last two IPv4 octets on a shared screen, set `$env:NISEC_MASK_IPS="true"` in the dashboard terminal before starting it.
+- Source addresses are always displayed in full for investigation and correlation.
 - Updates poll every two seconds and drain any backlog in bounded batches. The screen retains the latest 100 events and 60 detections; full evidence remains in the database.
 - Session revisions update existing cards after classification or model scoring. Click a detection to inspect evidence.
 - Pause freezes the view only. Collection continues. Resume catches up; changing filters refreshes the selected window.
@@ -113,7 +91,7 @@ Historical imports do not automatically create a flood of incidents. Incidents a
 - Training is needed only for intentional dataset/model changes. Model files are trusted local artifacts; do not load untrusted joblib files.
 - Keep local backups of instance and model while services are stopped. These contain sensitive information and are excluded from GitHub.
 - Updates missing after editing: restart the dashboard and hard-refresh the page.
-- Discord says not configured: set `HONEYTRACE_DISCORD_WEBHOOK` in both service terminals before starting them. The sensor needs it to send; the dashboard needs it to display configuration status.
+- Discord says not configured: open Alerts, paste a valid `https://discord.com/api/webhooks/...` URL, and select Save webhook.
 - Discord delivery failed: open the alert drawer to confirm the failure, check that the URL still exists and the computer can reach Discord, then rotate the webhook if it may have been exposed. Dashboard alerts remain available even if Discord is offline.
 
 ## Verification

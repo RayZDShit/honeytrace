@@ -151,7 +151,12 @@ dialog::backdrop { background: rgba(2, 7, 12, .78); }
 .alert-drawer { position: fixed; z-index: 21; top: 0; right: 0; width: min(440px, 100vw); height: 100vh; background: var(--surface); border-left: 1px solid var(--border); box-shadow: -24px 0 70px rgba(0,0,0,.45); overflow-y: auto; }
 .alert-drawer-heading { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; align-items: center; padding: 20px; background: rgba(21,23,28,.98); border-bottom: 1px solid var(--border); }
 .alert-controls { display: flex; flex-wrap: wrap; gap: 9px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
-.alert-channel-status { padding: 0 20px; margin: 13px 0; }
+.discord-settings { display: grid; gap: 10px; padding: 17px 20px; border-bottom: 1px solid var(--border); }
+.discord-settings h3 { margin: 0; font-size: 15px; }
+.alert-channel-status { margin: 0; }
+.discord-setting-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.danger-action { border-color: var(--red); color: var(--red); }
+.danger-action:hover { background: rgba(255, 107, 121, .1); }
 .alert-list { border-top: 1px solid var(--border); }
 .alert-list > .quiet { display: block; padding: 24px 20px; }
 .alert-item { padding: 17px 20px; border-left: 3px solid var(--orange); border-bottom: 1px solid var(--border); }
