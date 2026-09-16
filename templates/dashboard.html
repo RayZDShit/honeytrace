@@ -38,7 +38,12 @@
     <main>
         <header class="topbar">
             <div><p class="eyebrow">HONEYPOT BEHAVIOR INTELLIGENCE</p><h1 id="page-title">Live monitor</h1></div>
-            <div class="update-status" id="update-status" aria-live="polite">Loading…</div>
+            <div class="topbar-actions">
+                <div class="update-status" id="update-status" aria-live="polite">Loading…</div>
+                <button id="alert-button" class="alert-button" type="button" aria-controls="alert-drawer" aria-expanded="false">
+                    <span aria-hidden="true">●</span> Alerts <span id="alert-count" class="alert-count" hidden>0</span>
+                </button>
+            </div>
         </header>
 
         <section class="view" id="view-overview">
@@ -160,6 +165,21 @@
 
     </main>
 </div>
+
+<div id="alert-overlay" class="alert-overlay" hidden></div>
+<aside id="alert-drawer" class="alert-drawer" aria-label="Security alerts" hidden>
+    <div class="alert-drawer-heading">
+        <div><p class="eyebrow">SECURITY NOTIFICATIONS</p><h2>Alerts</h2></div>
+        <button id="close-alerts" class="stream-toggle" type="button">Close</button>
+    </div>
+    <div class="alert-controls">
+        <button id="acknowledge-alerts" class="stream-toggle" type="button">Acknowledge all</button>
+        <button id="toggle-alert-sound" class="stream-toggle" type="button">Mute critical sound</button>
+    </div>
+    <p id="discord-alert-status" class="quiet alert-channel-status"></p>
+    <div id="alert-list" class="alert-list"><p class="quiet">Loading alerts…</p></div>
+</aside>
+<div id="alert-toast" class="alert-toast" role="status" aria-live="assertive" hidden></div>
 
 <dialog id="session-dialog">
     <div class="dialog-heading"><div><p class="eyebrow">SESSION INVESTIGATION</p><h2 id="dialog-title">Session details</h2></div><button id="close-dialog" aria-label="Close session details">Close</button></div>

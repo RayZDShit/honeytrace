@@ -13,6 +13,7 @@ The bundled sensor implements SSHv2 transport using AsyncSSH and a pure in-memor
 - Use only dummy credentials during demonstrations.
 - Treat Cowrie logs and downloaded artifact metadata as potentially sensitive.
 - Never commit Cowrie archives, generated databases, credential keys, model artifacts, or environment files.
+- Treat a Discord webhook URL as a secret. Configure it only through `HONEYTRACE_DISCORD_WEBHOOK`, never commit it, and rotate it immediately if exposed.
 - Do not execute files or commands recovered from honeypot telemetry.
 
 ## Credential handling
@@ -24,6 +25,8 @@ Analyst passwords use Werkzeug scrypt hashes. Login attempts are limited per cli
 The SSH host key, dashboard signing key, analyst accounts, telemetry, and trained model stay in ignored local directories. The sensor decoy credential is separate from analyst authentication. The default lab-only decoy is root / honeytrace-lab, adjustable using HONEYTRACE_DECOY_PASSWORD. It grants no real system privileges.
 
 Submitted commands may contain secrets or personal data. The evidence viewer and exports are restricted to signed-in analysts. Complete source addresses are shown by default for investigation and are stored in the database. Set `NISEC_MASK_IPS=true` before starting the dashboard when displaying it to an audience that should not see those addresses. Do not place sensitive real values in test commands. Exports contain at most 5,000 evidence events and escape spreadsheet formulas.
+
+Optional Discord alerts send incident severity, category, sensor name, incident number, and a masked source address to Discord. Complete source addresses are sent only when `HONEYTRACE_DISCORD_INCLUDE_IP=true` is explicitly set in the sensor process. Enabling a webhook creates outbound third-party telemetry; use a private channel, apply your organization's disclosure and retention rules, and keep the feature disabled where external delivery is not approved. The dashboard API does not expose the webhook URL.
 
 This release is a lab-oriented implementation, not a production certification. The queue is bounded in memory; abrupt process/OS failure can lose uncommitted events. Heartbeats and dropped-event counters make failures visible. Validate throughput, retention, backups, HTTPS and process supervision for any longer-running deployment.
 

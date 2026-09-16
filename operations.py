@@ -7,6 +7,10 @@ import io
 import os
 import secrets
 import time
+import json
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from threading import Lock
@@ -30,13 +34,67 @@ def create_analyst(username: str, password: str) -> None:
         )
 
 
+def _discord_webhook() -> str | None:
+    value = os.getenv("HONEYTRACE_DISCORD_WEBHOOK", "").strip()
+    if not value:
+        return None
+    parsed = urlparse(value)
+    if parsed.scheme != "https" or parsed.hostname not in {"discord.com", "discordapp.com"} or not parsed.path.startswith("/api/webhooks/"):
+        return None
+    return value
+
+
+def _deliver_discord_alert(alert_id: int) -> None:
+    webhook = _discord_webhook()
+    if not webhook:
+        return
+    with connect(readonly=True) as conn:
+        alert = conn.execute("SELECT * FROM alerts WHERE id=?", (alert_id,)).fetchone()
+    if not alert or alert["discord_status"] == "sent":
+        return
+    include_ip = os.getenv("HONEYTRACE_DISCORD_INCLUDE_IP", "false").lower() in {"1", "true", "yes"}
+    source = alert["src_ip"] if include_ip else mask_ip(alert["src_ip"])
+    titles = {"new": "New security incident", "escalated": "Incident escalated", "reopened": "Incident reopened"}
+    payload = {
+        "username": "HoneyTrace",
+        "allowed_mentions": {"parse": []},
+        "embeds": [{
+            "title": titles.get(alert["alert_type"], "HoneyTrace alert"),
+            "color": 15158332 if alert["severity"] == "critical" else 16030307,
+            "fields": [
+                {"name": "Severity", "value": alert["severity"].upper(), "inline": True},
+                {"name": "Category", "value": alert["category"].replace("_", " ").title(), "inline": True},
+                {"name": "Sensor", "value": alert["sensor"], "inline": True},
+                {"name": "Source", "value": source or "Unknown", "inline": True},
+                {"name": "Incident", "value": f"#{alert['incident_id']}", "inline": True},
+            ],
+            "timestamp": alert["created_at"],
+            "footer": {"text": "Open HoneyTrace to review and acknowledge"},
+        }],
+    }
+    status, sent_at, error = "failed", None, None
+    try:
+        request_data = json.dumps(payload).encode("utf-8")
+        request_object = Request(webhook, data=request_data, headers={"Content-Type": "application/json", "User-Agent": "HoneyTrace/1.0"}, method="POST")
+        with urlopen(request_object, timeout=5) as response:
+            if response.status not in {200, 204}:
+                raise RuntimeError(f"Discord returned HTTP {response.status}")
+        status, sent_at = "sent", utc_now()
+    except (HTTPError, URLError, OSError, RuntimeError) as exc:
+        error = f"{type(exc).__name__}: {exc}"[:500]
+    with connect() as conn:
+        conn.execute("UPDATE alerts SET discord_status=?,discord_sent_at=?,discord_error=? WHERE id=?",
+                     (status, sent_at, error, alert_id))
+
+
 def sync_incidents(session_ids: list[int]) -> None:
+    alert_ids: list[int] = []
     with connect() as conn:
         for session_id in session_ids:
             row = conn.execute("SELECT * FROM sessions WHERE id=?", (session_id,)).fetchone()
             if not row:
                 continue
-            exists = conn.execute("SELECT id FROM incidents WHERE session_key=?", (row["session_key"],)).fetchone()
+            exists = conn.execute("SELECT * FROM incidents WHERE session_key=?", (row["session_key"],)).fetchone()
             if row["threat_level"] not in {"high", "critical"} and not exists:
                 continue
             conn.execute(
@@ -51,6 +109,28 @@ def sync_incidents(session_ids: list[int]) -> None:
                  row["final_label"], row["threat_level"], row["first_seen"], row["last_seen"],
                  row["event_count"], row["rule_reason"] or "", utc_now()),
             )
+            incident = conn.execute("SELECT * FROM incidents WHERE session_key=?", (row["session_key"],)).fetchone()
+            alert_type = None
+            if not exists and row["threat_level"] in {"high", "critical"}:
+                alert_type = "new"
+            elif exists and exists["severity"] == "high" and row["threat_level"] == "critical":
+                alert_type = "escalated"
+            elif exists and exists["status"] == "Resolved" and row["last_seen"] > exists["last_seen"]:
+                alert_type = "reopened"
+            if alert_type:
+                suffix = row["last_seen"] if alert_type == "reopened" else row["threat_level"]
+                alert_key = f"{row['session_key']}:{alert_type}:{suffix}"
+                cursor = conn.execute(
+                    """INSERT OR IGNORE INTO alerts(alert_key,incident_id,session_key,alert_type,severity,
+                       category,sensor,src_ip,created_at,discord_status) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                    (alert_key, incident["id"], row["session_key"], alert_type, row["threat_level"],
+                     row["final_label"], row["source_name"], row["src_ip"], utc_now(),
+                     "pending" if _discord_webhook() else "disabled"),
+                )
+                if cursor.rowcount:
+                    alert_ids.append(cursor.lastrowid)
+    for alert_id in alert_ids:
+        _deliver_discord_alert(alert_id)
 
 
 def operational_status():
@@ -189,6 +269,42 @@ def install_operations(app):
             if MASK_IPS:
                 row["src_ip"] = mask_ip(row["src_ip"])
         return jsonify(rows)
+
+    @bp.get("/api/alerts")
+    def alerts():
+        limit = min(max(request.args.get("limit", 50, type=int), 10), 200)
+        with connect(readonly=True) as conn:
+            rows = [dict(r) for r in conn.execute(
+                "SELECT * FROM alerts ORDER BY id DESC LIMIT ?", (limit,))]
+            unread = conn.execute("SELECT COUNT(*) FROM alerts WHERE acknowledged_at IS NULL").fetchone()[0]
+        for row in rows:
+            if MASK_IPS:
+                row["src_ip"] = mask_ip(row["src_ip"])
+            row.pop("alert_key", None)
+            row.pop("session_key", None)
+            row.pop("discord_error", None)
+        return jsonify(alerts=rows, unread=unread, discord_configured=bool(_discord_webhook()))
+
+    @bp.patch("/api/alerts/<int:alert_id>")
+    def acknowledge_alert(alert_id):
+        data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict) or data.get("acknowledged") not in {True, False}:
+            return jsonify(error="Expected an acknowledged boolean"), 400
+        acknowledged = data["acknowledged"]
+        with connect() as conn:
+            exists = conn.execute("SELECT id FROM alerts WHERE id=?", (alert_id,)).fetchone()
+            if not exists:
+                return jsonify(error="Alert not found"), 404
+            conn.execute("UPDATE alerts SET acknowledged_by=?,acknowledged_at=? WHERE id=?",
+                         (session["analyst"] if acknowledged else None, utc_now() if acknowledged else None, alert_id))
+        return jsonify(ok=True)
+
+    @bp.post("/api/alerts/acknowledge-all")
+    def acknowledge_all_alerts():
+        with connect() as conn:
+            conn.execute("UPDATE alerts SET acknowledged_by=?,acknowledged_at=? WHERE acknowledged_at IS NULL",
+                         (session["analyst"], utc_now()))
+        return jsonify(ok=True)
 
     @bp.route("/api/incidents/<int:incident_id>", methods=["GET", "PATCH"])
     def incident(incident_id):

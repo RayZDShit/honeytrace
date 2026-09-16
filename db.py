@@ -151,6 +151,26 @@ CREATE TABLE IF NOT EXISTS incident_notes (
     FOREIGN KEY(incident_id) REFERENCES incidents(id)
 );
 CREATE INDEX IF NOT EXISTS idx_incidents_updated ON incidents(updated_at);
+CREATE TABLE IF NOT EXISTS alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    alert_key TEXT NOT NULL UNIQUE,
+    incident_id INTEGER NOT NULL,
+    session_key TEXT NOT NULL,
+    alert_type TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    category TEXT NOT NULL,
+    sensor TEXT NOT NULL,
+    src_ip TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    acknowledged_by TEXT,
+    acknowledged_at TEXT,
+    discord_status TEXT NOT NULL DEFAULT 'disabled',
+    discord_sent_at TEXT,
+    discord_error TEXT,
+    FOREIGN KEY(incident_id) REFERENCES incidents(id)
+);
+CREATE INDEX IF NOT EXISTS idx_alerts_created ON alerts(created_at);
+CREATE INDEX IF NOT EXISTS idx_alerts_acknowledged ON alerts(acknowledged_at);
 """
 
 

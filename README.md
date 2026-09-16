@@ -27,6 +27,8 @@ python manage.py honeypot
 
 Then open `http://127.0.0.1:5000` and sign in using the analyst account you just created. Choose your own password of at least 12 characters. Press `Ctrl+C` in each PowerShell window to stop the services.
 
+High and critical incidents create persistent dashboard alerts. Alerts are grouped by incident instead of being emitted for every event, and analysts can acknowledge them from the alert drawer. Optional Discord webhook delivery is described in [the operator guide](docs/OPERATIONS.md); it is disabled unless you configure it locally.
+
 On the existing school computer you can use `.\.python\python.exe` instead of `python`; install the updated requirements with that interpreter first. Your existing database and saved model are reused. You do not need to train the model again when reopening the project.
 
 See [the operator guide](docs/OPERATIONS.md) for the complete upgrade, daily startup, incident workflow, and troubleshooting steps.
@@ -68,7 +70,8 @@ The accuracy limitations described below still apply.
 - Pause/resume controls, visible stream health, five-minute activity counters, and complete source addresses for investigation
 - A custom SSHv2 sensor with a contained virtual terminal and bounded connections
 - Sensor heartbeats, active connection list, analysis backlog, and a local Chart.js activity chart
-- Analyst login, CSRF protection, grouped incidents, investigation notes and CSV evidence export
+- Analyst login, CSRF protection, grouped incidents, persistent high/critical alerts, investigation notes and CSV evidence export
+- Optional Discord webhook notifications with masked source addresses by default
 
 ## Important accuracy statement
 
